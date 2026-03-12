@@ -338,4 +338,43 @@ mod tests {
             eval(&expression("false").unwrap().1, &empty_store),
         );
     }
+
+    #[test]
+    fn test_program_file_runs_and_reports_diagnostics() {
+        let src = include_str!("../programs/test.while");
+        let mut diagnostics = Vec::new();
+
+        let prog = match parse(src) {
+            Ok(prog) => Some(prog),
+            Err(err) => {
+                diagnostics.push(format!("parse error:\n{err:#}"));
+                None
+            }
+        };
+
+        if let Some(prog) = prog {
+            let mut progs = indexmap::IndexMap::new();
+            progs.insert(prog.prog_name.clone(), prog.clone());
+
+            let input_expr = "[3,3,3]";
+            let input_val = match input(input_expr, &progs) {
+                Ok(input_val) => Some(input_val),
+                Err(err) => {
+                    diagnostics.push(format!("input error for `{input_expr}`:\n{err:#}"));
+                    None
+                }
+            };
+
+            if let Some(input_val) = input_val {
+                let result = interpret(&prog, &input_val, &progs);
+                println!("Output: {:?}", &result);
+            }
+        }
+
+        assert!(
+            diagnostics.is_empty(),
+            "Found diagnostic errors while running `programs/test.while`:\n{}",
+            diagnostics.join("\n\n")
+        );
+    }
 }

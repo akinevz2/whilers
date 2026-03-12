@@ -180,3 +180,198 @@ pub fn format_nest_list_atoms(tree: &NilTree) -> String {
     })
     .to_string()
 }
+
+/// Returns true if `tree` can be interpreted as a flat list of natural numbers.
+///
+/// - `Nil` is the empty list `[]` — valid.
+/// - `Num(n)` is the shorthand for a list of *n* zeros `[0,0,…,0]` — valid.
+/// - `List(v)` is valid when every element passes [`parse_num`].
+pub fn is_list_of_nums(tree: &NilTree) -> bool {
+    match tree {
+        NilTree::Nil => true,
+        NilTree::Num(_) => true,
+        NilTree::List(v) => v.iter().all(|elem| parse_num(elem).is_ok()),
+    }
+}
+
+/// Returns true if `tree` can be interpreted as a list of lists of natural numbers.
+///
+/// - `Nil` is the empty list of lists `[]` — valid.
+/// - `Num(n)` is the shorthand for `[Nil; n]`; each `Nil` is `[]` — valid.
+/// - `List(v)` is valid when every element satisfies [`is_list_of_nums`].
+pub fn is_list_of_list_of_nums(tree: &NilTree) -> bool {
+    match tree {
+        NilTree::Nil => true,
+        NilTree::Num(_) => true,
+        NilTree::List(v) => v.iter().all(|elem| is_list_of_nums(elem)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{interpret::input, niltree::cons};
+    use indexmap::IndexMap;
+
+    fn inp(s: &str) -> NilTree {
+        input(s, &IndexMap::default()).expect(s)
+    }
+
+    // ── is_list_of_nums ────────────────────────────────────────────────────
+
+    #[test]
+    fn list_of_nums_nil_is_empty_list() {
+        assert!(is_list_of_nums(&NilTree::Nil));
+    }
+
+    #[test]
+    fn list_of_nums_num_zero_is_nil() {
+        // Num(0) == Nil == []
+        assert!(is_list_of_nums(&NilTree::Num(0)));
+    }
+
+    #[test]
+    fn list_of_nums_num_shorthand() {
+        // Num(n) is shorthand for [0,0,...,0] with n elements
+        assert!(is_list_of_nums(&NilTree::Num(3)));
+        assert!(is_list_of_nums(&NilTree::Num(100)));
+    }
+
+    #[test]
+    fn list_of_nums_empty_list_variant() {
+        assert!(is_list_of_nums(&NilTree::list(vec![])));
+    }
+
+    #[test]
+    fn list_of_nums_all_nil_elements() {
+        // [nil, nil] = [0, 0]
+        let tree = NilTree::list(vec![NilTree::Nil, NilTree::Nil]);
+        assert!(is_list_of_nums(&tree));
+    }
+
+    #[test]
+    fn list_of_nums_all_num_elements() {
+        // [Num(1), Num(2), Num(3)] — each element is a plain number
+        let tree = NilTree::list(vec![NilTree::Num(3), NilTree::Num(2), NilTree::Num(1)]);
+        assert!(is_list_of_nums(&tree));
+    }
+
+    #[test]
+    fn list_of_nums_cons_built() {
+        // cons-build [0] and [1, 2, 3]
+        let zero_list = cons(&NilTree::Nil, &NilTree::Nil); // = [0]
+        assert!(is_list_of_nums(&zero_list));
+
+        let three = inp("[1,2,3]");
+        assert!(is_list_of_nums(&three));
+    }
+
+    #[test]
+    fn list_of_nums_parsed_integers() {
+        assert!(is_list_of_nums(&inp("[0]")));
+        assert!(is_list_of_nums(&inp("[0,1,2,3]")));
+        assert!(is_list_of_nums(&inp("[5,10,15]")));
+    }
+
+    #[test]
+    fn list_of_nums_rejects_nested_list() {
+        // [[1,2],[3,4]] — top-level elements are lists, not numbers
+        assert!(!is_list_of_nums(&inp("[[1,2],[3,4]]")));
+    }
+
+    #[test]
+    fn list_of_nums_rejects_doubly_nested() {
+        // [[[1]]] — deeply nested
+        assert!(!is_list_of_nums(&inp("[[[1]]]")));
+    }
+
+    #[test]
+    fn list_of_nums_rejects_list_with_non_num_element() {
+        // List containing [1] as an element: [1] = List([Num(1)]),
+        // but parse_num(List([Num(1)])) fails because Num(1) ≠ Nil
+        let inner = inp("[1]"); // = List([Num(1)])
+        let outer = NilTree::list(vec![inner]);
+        assert!(!is_list_of_nums(&outer));
+    }
+
+    // ── is_list_of_list_of_nums ────────────────────────────────────────────
+
+    #[test]
+    fn list_of_list_of_nums_nil_is_empty_outer_list() {
+        assert!(is_list_of_list_of_nums(&NilTree::Nil));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_num_shorthand() {
+        // Num(n) ≡ [Nil; n], and each Nil is a valid (empty) list of numbers
+        assert!(is_list_of_list_of_nums(&NilTree::Num(0)));
+        assert!(is_list_of_list_of_nums(&NilTree::Num(3)));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_empty_list_variant() {
+        assert!(is_list_of_list_of_nums(&NilTree::list(vec![])));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_typical() {
+        // [[1,2],[3,4]]
+        assert!(is_list_of_list_of_nums(&inp("[[1,2],[3,4]]")));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_with_empty_sublists() {
+        // [[], [0], [1,2,3]]
+        assert!(is_list_of_list_of_nums(&inp("[[],[0],[1,2,3]]")));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_single_sublist() {
+        // [[5]]
+        assert!(is_list_of_list_of_nums(&inp("[[5]]")));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_integers_are_valid_sublists() {
+        // [1,2,3] — each integer Num(n) is also a valid list of numbers [0,0,...,0]
+        // so [1,2,3] parses as BOTH a list of numbers AND a list of lists of numbers
+        assert!(is_list_of_list_of_nums(&inp("[1,2,3]")));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_rejects_triple_nesting() {
+        // [[[1]]] — the element [[1]] contains [1], and [1] ≠ a number
+        assert!(!is_list_of_list_of_nums(&inp("[[[1]]]")));
+    }
+
+    #[test]
+    fn list_of_list_of_nums_rejects_non_num_grandchild() {
+        // [[1,[2]]] — [2] is not a number → inner list is not a list-of-nums
+        assert!(!is_list_of_list_of_nums(&inp("[[1,[2]]]")));
+    }
+
+    // ── overlap: values that satisfy both predicates ────────────────────────
+
+    #[test]
+    fn overlap_nil_satisfies_both() {
+        assert!(is_list_of_nums(&NilTree::Nil));
+        assert!(is_list_of_list_of_nums(&NilTree::Nil));
+    }
+
+    #[test]
+    fn overlap_flat_int_list_satisfies_both() {
+        // A flat integer list like [1,2,3] is a list-of-nums AND a list-of-lists-of-nums
+        // because each integer Num(n) can be read as the list [0,...,0]
+        let t = inp("[1,2,3]");
+        assert!(is_list_of_nums(&t));
+        assert!(is_list_of_list_of_nums(&t));
+    }
+
+    #[test]
+    fn exclusive_nested_list_only_list_of_list() {
+        // [[1,2],[3]] is a list-of-lists-of-nums but NOT a list-of-nums
+        let t = inp("[[1,2],[3]]");
+        assert!(!is_list_of_nums(&t));
+        assert!(is_list_of_list_of_nums(&t));
+    }
+}

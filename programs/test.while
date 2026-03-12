@@ -1,0 +1,3 @@
+test read X {
+    A := (cons nil (cons (cons nil nil) (cons (cons nil (cons nil (cons nil nil))) (cons (cons (cons nil nil) nil) nil))))
+} write A
